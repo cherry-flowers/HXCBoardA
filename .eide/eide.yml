@@ -233,4 +233,14 @@ targets:
         bin: ""
         interface: stlink-v2
         target: stm32f4x
-    uploader: JLink
+      STLink:
+        address: "0x8000000"
+        bin: ""
+        elFile: None
+        optionBytes: .eide/hxcboardatest_freertos_f427vit6.st.option.bytes.ini
+        otherCmds: ""
+        proType: SWD
+        resetMode: default
+        runAfterProgram: true
+        speed: 4000
+    uploader: STLink

@@ -130,21 +130,21 @@ static bool CalculateCanBaudParams(uint32_t baud, uint32_t& prescaler, uint32_t&
   // 采样点 ≈ (1 + BS1 - SJW) / (1 + BS1 + BS2) -> 16/21 ≈ 76.2%
   static const TimingCandidate candidates_42MHz[] =
   {
-    {1000000,  2, CAN_BS1_15TQ, CAN_BS2_5TQ},  // 1Mbps:   42M/(2×21)  = 1M,   采样点约 76.2%
-    {500000,   4, CAN_BS1_16TQ, CAN_BS2_3TQ},  // 500kbps: 42M/(4×21)  = 500k, 采样点约 76.2%
-    {250000,   8, CAN_BS1_16TQ, CAN_BS2_3TQ},  // 250kbps: 42M/(8×21)  = 250k, 采样点约 76.2%
-    {125000,  16, CAN_BS1_16TQ, CAN_BS2_3TQ}   // 125kbps: 42M/(16×21) = 125k, 采样点约 76.2%
+    {1000000,  2, CAN_BS1_15TQ, CAN_BS2_5TQ},  // 1Mbps:   42M/(2×21)  = 1M,   采样点约 71.4%
+    {500000,   4, CAN_BS1_16TQ, CAN_BS2_4TQ},  // 500kbps: 42M/(4×21)  = 500k, 采样点约 76.2%
+    {250000,   8, CAN_BS1_16TQ, CAN_BS2_4TQ},  // 250kbps: 42M/(8×21)  = 250k, 采样点约 76.2%
+    {125000,  16, CAN_BS1_16TQ, CAN_BS2_4TQ}   // 125kbps: 42M/(16×21) = 125k, 采样点约 76.2%
   };
 
-  // APB1 = 45MHz 配置表（已实测验证 1Mbps 正常通信）
+  // APB1 = 45MHz 配置表（已实测验证 1Mbps,500K,250K,125K 正常通信）
   // 波特率 = 45MHz / (Prescaler × (1 + BS1 + BS2))
   // 采样点 ≈ (1 + BS1 - SJW) / (1 + BS1 + BS2) -> 11/15 ≈ 73.3%
   static const TimingCandidate candidates_45MHz[] =
   {
-    {1000000,  5, CAN_BS1_7TQ, CAN_BS2_1TQ},  // 1Mbps:   45M/(3×15)  = 1M,   采样点约 73.3%
-    {500000,   6, CAN_BS1_11TQ, CAN_BS2_2TQ},  // 500kbps: 45M/(6×15)  = 500k, 采样点约 73.3%
-    {250000,  12, CAN_BS1_11TQ, CAN_BS2_2TQ},  // 250kbps: 45M/(12×15) = 250k, 采样点约 73.3%
-    {125000,  24, CAN_BS1_11TQ, CAN_BS2_2TQ}   // 125kbps: 45M/(24×15) = 125k, 采样点约 73.3%
+    {1000000,  5, CAN_BS1_7TQ, CAN_BS2_1TQ},  // 1Mbps:   45M/(3×15)  = 1M,   采样点约 77.78%
+    {500000,   6, CAN_BS1_11TQ, CAN_BS2_3TQ},  // 500kbps: 45M/(6×15)  = 500k, 采样点约 73.3%
+    {250000,  12, CAN_BS1_11TQ, CAN_BS2_3TQ},  // 250kbps: 45M/(12×15) = 250k, 采样点约 73.3%
+    {125000,  24, CAN_BS1_11TQ, CAN_BS2_3TQ}   // 125kbps: 45M/(24×15) = 125k, 采样点约 73.3%
   };
   // 获取APB1时钟频率
   const uint32_t apb1Clock = static_cast<uint32_t>(CHIP_FREQ_MHZ * 1000000.0f) / 4; // MHz转Hz
