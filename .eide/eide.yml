@@ -117,8 +117,17 @@ targets:
         - User/MiddleWare/MWCommon/Inc
         - User/MiddleWare/Elrs/Inc
         - User/MiddleWare/Log/Inc
+        - User/MiddleWare/Motor/DJImotor/DJI3508/Inc
+        - User/MiddleWare/Motor/DMmotor/DMJ4310_2EC/Inc
+        - User/MiddleWare/Motor/DMmotor/DMJ10010L_2EC/Inc
+        - User/MiddleWare/Algorithm/Inc
+        - User/MiddleWare/VOFA/Inc
+        - Middlewares/ST/ARM/DSP/Inc
+        - User/MiddleWare/Motor/DJImotor/DJI2006/Inc
       libList: []
     excludeList: []
+    settings:
+      debugger: cortex-debug
     toolchain: AC6
     toolchainConfigMap:
       AC6:

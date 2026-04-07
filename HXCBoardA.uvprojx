@@ -16,7 +16,7 @@
         <TargetCommonOption>
           <Device>STM32F427VITx</Device>
           <Vendor>STMicroelectronics</Vendor>
-          <PackID>Keil.STM32F4xx_DFP.3.1.1</PackID>
+          <PackID>Keil.STM32F4xx_DFP.3.1.0</PackID>
           <PackURL>https://www.keil.com/pack/</PackURL>
           <Cpu>IRAM(0x20000000,0x00030000) IRAM2(0x10000000,0x00010000) IROM(0x08000000,0x00200000) CPUTYPE("Cortex-M4") FPU2 DSP CLOCK(12000000) ELITTLE</Cpu>
           <FlashUtilSpec></FlashUtilSpec>
@@ -738,6 +738,61 @@
               <FileName>startup_stm32f427xx.s</FileName>
               <FileType>2</FileType>
               <FilePath>MDK-ARM/startup_stm32f427xx.s</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>MOTOR</GroupName>
+          <Files>
+            <File>
+              <FileName>DJI3508.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>.\User\MiddleWare\Motor\DJImotor\DJI3508\Src\DJI3508.cpp</FilePath>
+            </File>
+            <File>
+              <FileName>DMJ4310.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>.\User\MiddleWare\Motor\DMmotor\DMJ4310_2EC\Src\DMJ4310.cpp</FilePath>
+            </File>
+            <File>
+              <FileName>DMJ10010L.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>.\User\MiddleWare\Motor\DMmotor\DMJ10010L_2EC\Src\DMJ10010L.cpp</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>USER/MIDDLEWARE/ELRS/SRC</GroupName>
+          <Files>
+            <File>
+              <FileName>elrs.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>.\User\MiddleWare\Elrs\Src\elrs.cpp</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>Algorithm</GroupName>
+          <Files>
+            <File>
+              <FileName>Fuzzy_PID_Controller.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>.\User\MiddleWare\Algorithm\Src\Fuzzy_PID_Controller.cpp</FilePath>
+            </File>
+            <File>
+              <FileName>LowPassFilter.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>.\User\MiddleWare\Algorithm\Src\LowPassFilter.cpp</FilePath>
+            </File>
+            <File>
+              <FileName>MW_Math.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>.\User\MiddleWare\Algorithm\Src\MW_Math.cpp</FilePath>
+            </File>
+            <File>
+              <FileName>PID_Controller.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>.\User\MiddleWare\Algorithm\Src\PID_Controller.cpp</FilePath>
             </File>
           </Files>
         </Group>
