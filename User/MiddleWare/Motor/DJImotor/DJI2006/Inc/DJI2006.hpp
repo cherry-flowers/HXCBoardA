@@ -4,31 +4,24 @@
 * ===========================================================
 * @brief
 * 该文件依赖
-* MW_Common.hpp
-* B2MW_CANManager.hpp
+* 
 * ===========================================================
 * 该文件功能表述(先声明后定义):
-* 1. 定义了DJI2006电机的状态枚举、控制模式枚举、ID枚举、反馈ID枚举、命令枚举、寄存器地址枚举
-* 2. 定义了DJI2006电机的反馈数据包结构体、数据结构体、特征参数命名空间
-* 3. 定义了DJI2006电机类,包括构造函数、析构函数、初始化函数、启动控制任务函数、设置期望值函数、设置PID控制器模式函数、获取反馈消息函数、获取电机数据函数
-* 4. 实现了DJI2006电机的CAN通信初始化、回调函数注册、消息解析、控制指令发送等功能
-* 5. 实现了基于PID控制器的电机闭环控制(电流环、速度环、位置环)
 * ===========================================================
-* @version   1.8
-* @date      2025-12-14
+* @version   0.4
+* @date      2025-11-27
 * @copyright Copyright (c) 2025
 ============================================================*/
 #ifndef DJI2006_HPP
 #define DJI2006_HPP
 
-/*======================= 依赖C++文件 ========================*/
+/*======================== 依赖文件 ==========================*/
 #include "MW_Common.hpp"
 #include "B2MW_CANManager.hpp"
 #include "PID_Controller.hpp"
 #include "MW_Math.hpp"
 
 /*==========================宏定义开关=========================*/
-
 /*是否开启DJI2006断言纠错功能*/
 #define DJI2006_ASSERT_ENABLE 1
 
@@ -49,17 +42,15 @@
     #define DJI2006_ASSERT(status, msg) ((void)0)
 #endif
 
-
-
+/*==================== DJI2006 电机类 =====================*/
 
 /**
  * @brief DJI2006电机状态枚举
  * @details 用于表示DJI2006电机的状态
  */
 enum DJI2006_Status{
-    DJI2006_Online = 0,      /* 电机在线 */
-    DJI2006_Offline,         /* 电机离线 */
-    DJI2006_OverTemperature, /* 电机过温 */
+    DJI2006_Online = 0,
+    DJI2006_Offline
 };
 
 /**
@@ -83,10 +74,11 @@ enum DJI2006_PID_LOOP{
 
 /**
  * @brief C610反馈CAN帧枚举,C610返回的Can消息对应的DJI2006的电机ID,
- * 不要传入DJI2006_Begin和DJI2006_End这些作为电机的ID
+ * 不要传入DJI2006_Begin,DJI2006_End,DJI2006_IDLowMax,DJI2006_IDHighMin这些作为电机的ID
  */
-enum DJI2006_ID :uint32_t {
+enum DJI2006_ID :uint32_t{
     DJI2006_Begin = 0x201,
+    
     
     DJI2006_1 = 0x201,
     DJI2006_2 = 0x202,
@@ -103,20 +95,23 @@ enum DJI2006_ID :uint32_t {
 };
 
 /**
- * @brief C610反馈CAN消息结构体
- * @details __packed 用于确保结构体在内存中按字节对齐,不添加填充字节
+ * @brief C610反馈CAN帧结构体
+ * @details 用于表示C610返回的DJI2006电机的反馈信息,与C620电流映射范围不同
+ * @note 1. 转子角度 单位° 8192 映射到0-360°
+ * @note 2. 转子转速 单位RPM
+ * @note 3. 输出电流 单位A 映射到-16384-16384,对应-10A到+10A
+ * @note 4. 保留位
  */
 struct __attribute__((__packed__)) C610_FeedBackMsg{
-    uint16_t Encoder;      /* 转子角度 单位° 0-8192 映射到0-360° */
+    uint16_t Encoder;      /* 转子角度 单位° 8192 映射到0-360° */
     int16_t  RPM;          /* 转子转速 单位RPM */
-    int16_t  Current;      /* 电流 单位A 映射到-16384-16384,对应-20A到+20A */
-    int8_t   Temperature;  /* 温度 单位C°*/
-    uint8_t  Reserved;     /* 保留位 */
+    int16_t  Current;      /* 输出电流 单位A 映射到-16384-16384,对应-10A到+10A */
+    uint16_t Reserved;     /* 保留位 */
 };
 
 /**
  * @brief DJI2006电机数据结构体
- * @details 用于存储DJI2006电机的实时数据(这里的数据统一是指输出端)
+ * @details 用于存储DJI2006电机的数据(统一是指的电机输出端的数据)
  */
 struct DJI2006_Data{
     float32_t Exp_Angle;          /* 电机输出轴期望角度 单位° */
@@ -136,54 +131,49 @@ struct DJI2006_Data{
 /**
  * @brief DJI2006电机特征参数
  * @details 用于存储DJI2006电机的特征参数
- * 
- * 基于C610电调的参数
  */
 namespace DJI2006_CharacterParam{
-    constexpr float32_t GearBoxRate = 36.0f/1.0f;                         /* 齿轮箱减速比 */
-    constexpr float32_t IDLE_GearBoxRPM = 500.0f ;                           /* 空载齿轮箱转速 RPM */
+    constexpr float32_t GearBoxRate = 36.f;                                   /* 齿轮箱减速比 */
+    constexpr float32_t IDLE_GearBoxRPM =  500.0f ;                           /* 空载齿轮箱转速 RPM */
     constexpr float32_t IDLE_GearBoxRad = IDLE_GearBoxRPM *PI /30.0f;         /* 空载齿轮箱转速 Rad/s */
     constexpr float32_t Rated_GearBoxRPM = 416.0f;                            /* 额定齿轮箱转速 RPM */
     constexpr float32_t Rated_GearBoxRad = Rated_GearBoxRPM *PI /30.0f;       /* 额定齿轮箱转速 Rad/s */
-    constexpr float32_t IDLE_RotorRPM = IDLE_GearBoxRPM*GearBoxRate;          /* 转子空载转速 */
-    constexpr float32_t IDLE_RotorCurrent_A = 0.6f;                          /* 转子空载电流 单位A */
+    constexpr float32_t IDLE_RotorRPM = IDLE_GearBoxRPM * GearBoxRate;        /* 转子空载转速 */
+    constexpr float32_t IDLE_RotorCurrent_A = 0.6f;                           /* 转子空载电流 单位A */
     constexpr float32_t IDLE_RotorCurrent_mA = IDLE_RotorCurrent_A * 1000.0f; /* 转子空载电流 单位mA */
     constexpr float32_t Rated_RotorRPM = Rated_GearBoxRPM*GearBoxRate;        /* 转子额定转速 */ 
-    constexpr float32_t Rated_Torque_NM = 1.0f;                               /* 额定转矩,最大连续力矩(N.m) */
-    constexpr float32_t Rated_Current_A = 3.0f;                              /* 额定电流 单位A */
+    constexpr float32_t Rated_Torque_NM = 1.0f;                               /* 转子额定转矩,最大连续力矩(N.m) */
+    constexpr float32_t Rated_Current_A = 3.0f;                               /* 额定电流 单位A */
     constexpr float32_t Rated_Current_mA = Rated_Current_A * 1000.0f;         /* 额定电流 单位mA */
     constexpr float32_t Rated_Voltage_V = 24.0f;                              /* 额定电压 单位V */
-    constexpr float32_t Torque_Constant_NM_A = 0.18f;                          /* 转矩常数 N.m/A */
+    constexpr float32_t Torque_Constant_NM_A = 0.18f;                         /* 转矩常数 N.m/A */
     constexpr float32_t Speed_Constant_RPM_V = 32.96f;                        /* 速度常数 RPM/V */
-    constexpr float32_t Speed_Torque_Gradient =  110.0f;                       /* 速度转矩梯度 (RPM)/N.m */
-    constexpr float32_t MaxTemperature = 90.0f;                               /* 最大温度 单位C° */
+    constexpr float32_t Speed_Torque_Gradient = 110.0f;                       /* 转速转矩梯度 (RPM)/N.m */
+    constexpr float32_t MaxTemperature = 55.0f;                               /* 最大温度 单位C° */
     constexpr uint16_t  Encoder_Per_Round = 8192;                             /* 编码器最大值 0-8191 映射到0-360° */
     constexpr float32_t Max_C610Current = 10000.0f;                           /* 电调最大控制电流 10000mA*/
 };
 
-/*==================== DJI2006 电机类 =====================*/
-
 class DJI2006{
-public:
 
+public:
 /**
  * @brief 构造函数
  * @param motorID               电机ID,范围为1-8
  * @param canBus                使用的CAN总线
- * @param baudRate              CAN总线波特率   
+ * @param baudRate              CAN总线波特率
  * @param Location_PID_Param    位置PID参数
  * @param Speed_PID_Param       速度PID参数
  * @param controlMode           控制模式,默认开环电流模式
- * @param mode                  CAN总线模式,默认正常模式
+ * @param canMode               CAN总线模式,默认正常模式
  */
 DJI2006(DJI2006_ID motorID,
         USE_CanBus canBus,
         Can::CanBaudRate baudRate,
         PID_Param& Location_PID_Param,
         PID_Param& Speed_PID_Param,
-        DJI2006_ControlMode controlMode =DJI2006_OpenLoopMode,
-        Can::CanMode mode = Can::CanMode::MODE_NORMAL 
-    );
+        DJI2006_ControlMode controlMode = DJI2006_ControlMode::DJI2006_OpenLoopMode,
+        Can::CanMode canMode = Can::CanMode::MODE_NORMAL);
 
 /**
  * @brief 析构函数
@@ -228,31 +218,32 @@ MW_Status SetExpect(float32_t exp);
  * @note  该函数用于设置DJI2006电机中指定环路的PID控制器模式
  */
 MW_Status SetPIDControllerMode(DJI2006_PID_LOOP Loop,
-                            PID_D_First_Mode D_First_Mode, 
-                            PID_I_Limit_Mode I_Limit_Mode, 
-                            PID_DeedZone_Mode DeedZone_Mode, 
-                            PID_I_Separate_Mode I_Separate_Mode, 
-                            PID_I_VarSpeed_Mode I_VarSpeed_Mode, 
-                            PID_Output_Limit_Mode Output_Limit_Mode,
-                            PID_FeedForward_Mode FeedForward_Mode);     
+                                PID_D_First_Mode D_First_Mode,
+                                PID_I_Limit_Mode I_Limit_Mode,
+                                PID_DeedZone_Mode DeedZone_Mode,
+                                PID_I_Separate_Mode I_Separate_Mode,
+                                PID_I_VarSpeed_Mode I_VarSpeed_Mode,
+                                PID_Output_Limit_Mode Output_Limit_Mode,
+                                PID_FeedForward_Mode FeedForward_Mode);
 
 /**
- * @brief 获取C610反馈消息
- * @return C610_FeedBackMsg C610反馈消息结构体
+ * @brief 获取DJI2006电机的C610反馈信息
+ * @return C610_FeedBackMsg C610反馈信息结构体
  * @note  该函数用于获取电调C610反馈信息
  */
-C610_FeedBackMsg getC610FeedBackMsg() const;
+const C610_FeedBackMsg& getC610FeedBackMsg();
 
 /**
  * @brief 获取DJI2006电机的数据参数
  * @return DJI2006_Data 电机数据参数结构体
  * @note  该函数用于获取电机的实时数据参数
  */
-DJI2006_Data getMotorData() const;
+const DJI2006_Data& getMotoData();
+
 private:
 /*===================== 私有成员变量 =====================*/ 
- 
-/* 电机ID,范围为DJI2006_1-DJI2006_8 */
+
+/* 电机ID，范围为DJI2006_1-DJI2006_8 */
 DJI2006_ID MotorID;
 /* 使用的CAN总线 */
 USE_CanBus CanBus;
@@ -265,12 +256,12 @@ DJI2006_ControlMode ControlMode;
 /* 硬件资源状态 */
 bool Resource_Inited;
 /* 电机状态,默认离线 */
-volatile DJI2006_Status Status;
+DJI2006_Status Status;
 /* C610反馈消息结构体 */
-volatile C610_FeedBackMsg FeedBackMsg;
+C610_FeedBackMsg FeedBackMsg;
 /* 电机的数据参数 */
-volatile DJI2006_Data MotorData;
-/* 指向CanManager的指针,用于申请CAN总线资源 */
+DJI2006_Data MotorData;
+/* 指向CanManager的指针，用于申请CAN总线资源 */
 CanManager* CanManagerPtr;
 
 /*===================== 电机算法控制器 ======================*/
@@ -281,7 +272,7 @@ Loc_PID_Controller Location_PID;
 Loc_PID_Controller Speed_PID;
 
 /*====================== 私有成员函数 =======================*/
- 
+
 /**
  * @brief 发送当前电流指令
  * @param current 电流指令,范围为-16384-16384,映射到-20A到+20A
@@ -303,7 +294,7 @@ MW_Status InitResource();
  * 1. 该函数会向 CanManager 注册 DJI2006_CanMsgCallBack 函数作为静态回调函数
  * 2. 该函数被Init调用
  */
-MW_Status SetCallBack();
+MW_Status SetRouterCallBack();
 
 /*==================== 静态成员变量和函数 ====================*/
 
@@ -323,12 +314,12 @@ static CanMessage LowID_CanMsgSend;
 static CanMessage HighID_CanMsgSend;
 
 /**
- * @brief 静态实例注册表，存储所有DJI2006实例的指针
+ * @brief 静态实例注册表,存储所有DJI2006实例的指针
  */
 static DJI2006* Instance_Registry[DJI2006_End-DJI2006_Begin];
 
 /**
- * @brief 电机3508的CAN消息回调函数
+ * @brief 电机2006的CAN消息回调函数
  * @param canId CAN消息ID
  * @param data  指向CAN消息数据的指针
  * @param len   CAN消息数据长度

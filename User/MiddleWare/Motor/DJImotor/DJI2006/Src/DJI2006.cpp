@@ -7,28 +7,26 @@
 * DJI2006.hpp
 * ===========================================================
 * 该文件功能表述(先声明后定义):
-* 1. 定义并初始化了DJI2006类的静态成员变量(任务句柄、实例注册表、CAN发送消息结构体)
-* 2. 实现了DJI2006类的成员函数,包括构造/析构、初始化、控制任务启动、期望设置、PID模式设置等
-* 3. 实现了CAN消息回调函数(DJI2006_CanMsgCallBack),用于解析C610电调反馈数据并更新电机状态
-* 4. 实现了电机控制任务(ControlTask),负责周期性地执行PID闭环计算、状态管理及CAN指令发送
-* 5. 提供了私有辅助函数,如资源初始化(InitResource)、回调注册(SetCallBack)、CAN消息构建(AddControlOutToCanMsg)等
+* 1.定义并初始化了DJI2006类的静态成员变量
+* 2.实现了DJI2006类的成员函数
 * ===========================================================
-* @version   1.8
-* @date      2025-12-14
+* @version   0.4
+* @date      2025-11-27
 * @copyright Copyright (c) 2025
 ============================================================*/
 
 /*========================= 文件依赖 ========================*/
 #include "DJI2006.hpp"
+
 /*================= 为DJI2006的静态成员分配内存 ===============*/
 
 /**
- * @brief 控制任务函数句柄,用于指向DJI2006的控制任务函数
+ * @brief 控制任务函数句柄，用于指向DJI2006的控制任务函数
  */
 TaskHandle_t DJI2006::ControlTaskHandle = nullptr;
 
 /**
- * @brief  DJI2006类的实例注册表，用于存储所有已创建的DJI2006实例
+ * @brief DJI2006类的实例注册表，用于存储所有已创建的DJI2006实例
  */
 DJI2006* DJI2006::Instance_Registry[DJI2006_End-DJI2006_Begin] = {nullptr};
 
@@ -60,41 +58,38 @@ CanMessage DJI2006::HighID_CanMsgSend = {
 
 /**
  * @brief 构造函数
- * @param motorID 电机ID
- * @param canBus 使用的CAN总线
- * @param baudRate CAN总线波特率
- * @param Location_PID_Param 位置PID参数
- * @param Speed_PID_Param 速度PID参数
- * @param mode CAN总线模式
- * @param controlMode 控制模式,默认开环电流模式
- * @details 对DJI2006电机的成员变量进行初始化，向静态实例表注册该实例
+ * @param motorID               电机ID,范围为1-8
+ * @param canBus                使用的CAN总线
+ * @param baudRate              CAN总线波特率
+ * @param Location_PID_Param    位置PID参数
+ * @param Speed_PID_Param       速度PID参数
+ * @param controlMode           控制模式,默认开环电流模式
+ * @param mode                  CAN总线模式,默认正常模式
  */
-DJI2006::DJI2006(DJI2006_ID motorID, 
-                 USE_CanBus canBus,
-                 Can::CanBaudRate baudRate,
-                 PID_Param& Location_PID_Param,
-                 PID_Param& Speed_PID_Param,
-                 DJI2006_ControlMode controlMode,
-                 Can::CanMode mode
-                 ):
-                 Location_PID(Location_PID_Param),
-                 Speed_PID(Speed_PID_Param)
-{   
-    
+DJI2006::DJI2006(DJI2006_ID motorID,
+        USE_CanBus canBus,
+        Can::CanBaudRate baudRate,
+        PID_Param& Location_PID_Param,
+        PID_Param& Speed_PID_Param,
+        DJI2006_ControlMode controlMode,
+        Can::CanMode mode):
+        Location_PID(Location_PID_Param),
+        Speed_PID(Speed_PID_Param)
+{
     this->MotorID = motorID;
     this->CanBus = canBus;
     this->BaudRate = baudRate;
     this->Mode = mode;
     this->ControlMode = controlMode;
-    memset(const_cast<void*>(static_cast<volatile void*>(&MotorData)),0,sizeof(MotorData));
-    memset(const_cast<void*>(static_cast<volatile void*>(&FeedBackMsg)),0,sizeof(FeedBackMsg));
+    memset(&MotorData,0,sizeof(MotorData));
+    memset(&FeedBackMsg,0,sizeof(FeedBackMsg));
     /* 初始化资源申请状态为false */
     Resource_Inited = false;
     /* 初始化电机状态为离线 */
     Status = DJI2006_Offline;
     /* 注册电机实例到实例注册表,前提是电机ID在有效范围内 */
     if(MotorID>=DJI2006_Begin&&MotorID<DJI2006_End){
-    Instance_Registry[MotorID - DJI2006_Begin] = this;
+    Instance_Registry[MotorID-DJI2006_Begin] = this;
     }
     /* 绑定CanManager单例 */
     CanManagerPtr = &CanManager::GetInstance();
@@ -102,25 +97,24 @@ DJI2006::DJI2006(DJI2006_ID motorID,
 
 /**
  * @brief 析构函数
- * @note  取消订阅在Can总线上的回调函数，从实例注册表中移除该实例，取消绑定CanManager单例
+ * @note  取消订阅在Can总线上的回调函数,从实例注册表中移除实例，取消绑定CanManager单例
  */
-DJI2006::~DJI2006()
-{   
+DJI2006::~DJI2006(){
     /* 前提是电机ID在有效范围内 */
-    if(MotorID>=DJI2006_Begin&&MotorID<DJI2006_End){
+    if(MotorID>=DJI2006_Begin&&MotorID<DJI2006_End){   
     /*取消订阅在Can总线上的回调函数*/
     CanManagerPtr->UnSubscribe(CanBus,MotorID,DJI2006_CanMsgCallBack);
-    /* 从实例注册表中移除该实例 */
-    Instance_Registry[MotorID - DJI2006_Begin] = nullptr;
+    /*从实例注册表中移除实例*/
+    Instance_Registry[MotorID-DJI2006_Begin] = nullptr;
     }
-    /* 取消绑定CanManager单例 */
+    /*取消绑定CanManager单例*/
     CanManagerPtr = nullptr;
 }
 
 /**
- * @brief 初始化DJI2006电机
+ * @brief  初始化DJI2006电机
  * @return MW_Status 初始化结果
- * @details 申请CAN总线资源,设置CAN消息回调函数
+ * @note   该函数启动CAN总线资源并设置CAN接受回调函数
  */
 MW_Status DJI2006::Init(){
     /* 检查电机ID是否正确 */
@@ -136,23 +130,22 @@ MW_Status DJI2006::Init(){
     MW_Status res = MW_Status::ERROR;
     /* 启动CAN总线资源 */
     res = InitResource();
-    if(res == MW_Status::SUCCESS)
-    {
+    if(res == MW_Status::SUCCESS){
         /* 设置CAN消息回调函数 */
-        res = SetCallBack();
+        res = SetRouterCallBack();
     }
     return res;
 }
 
 /**
  * @brief 启动DJI2006电机控制任务
- * @details 启动DJI2006电机控制任务,任务中调用控制任务函数
+ * @return MW_Status 启动结果
+ * @note   该函数会创建一个任务,用于控制电机(多个电机也依旧是这个任务去管理)
  */
-MW_Status DJI2006::StartControlTask(void)
-{   
+MW_Status DJI2006::StartControlTask(void){
     /* 检查电机ID是否正确 */
     if(MotorID<DJI2006_Begin||MotorID>=DJI2006_End){
-        DJI2006_ASSERT(MW_Status::INVALID_PARAM,"电机ID错误");
+        DJI2006_ASSERT(MW_Status::INVALID_PARAM,"电机ID错误,创建控制任务失败");
         return MW_Status::INVALID_PARAM;
     }
     /* 检查CAN总线是否存在 */
@@ -168,7 +161,7 @@ MW_Status DJI2006::StartControlTask(void)
     if(ControlTaskHandle == nullptr)
     {
         /* 启动控制任务 */
-        xTaskCreateRes = xTaskCreate(ControlTask, "DJI2006 Control Task", 128, NULL, 24, &ControlTaskHandle);
+        xTaskCreateRes = xTaskCreate(ControlTask, "DJI2006 Control Task", 512, NULL, 24, &ControlTaskHandle);
         if(xTaskCreateRes != pdPASS)
         {
             res = MW_Status::ERROR;
@@ -179,17 +172,15 @@ MW_Status DJI2006::StartControlTask(void)
     return res;
 }
 
-
 /**
- * @brief 设置DJI2006电机的期望输出，这里的期望输出是设置的最外环的期望输出
- * @param exp 期望输出参数
+ * @brief 依据电机控制模式设置电机期望值
+ * @param exp 期望输出参数 
  * @return MW_Status 设置结果
  * @note  1.电机若是位置控制模式，输入位置环期望参数，单位为°
  * @note  2.电机若是速度控制模式，输入速度环期望参数，单位为rad/s
  * @note  3.电机若是开环电流模式，输入电流环期望参数，单位为mA
- */
-MW_Status DJI2006::SetExpect(float32_t exp)
-{   
+ * */
+MW_Status DJI2006::SetExpect(float32_t exp){
     /* 依据控制模式设置MotorData中的期望输出 */
     switch (ControlMode)
     {
@@ -206,7 +197,7 @@ MW_Status DJI2006::SetExpect(float32_t exp)
         break;
     /** 如果是开环电流模式 */
     case DJI2006_OpenLoopMode:
-        /* 对电流进行限制，保护措施 */
+        /* 将期望电流限制为电机输出的电流范围 */
         Constrain<float32_t>(exp,-DJI2006_CharacterParam::Rated_Current_mA,DJI2006_CharacterParam::Rated_Current_mA);
         MotorData.Exp_Current = exp;
         break;
@@ -220,23 +211,24 @@ MW_Status DJI2006::SetExpect(float32_t exp)
  * @brief 设置DJI2006电机的哪个环路的PID控制器模式
  * @param Loop 环路枚举,用于指定设置哪个环路的PID控制器模式
  * @param D_First_Mode D项系数模式
- * @param I_Limit_Mode I项限制模式
+ * @param I_Limit_Mode I项积分限幅模式
  * @param DeedZone_Mode 死区模式
  * @param I_Separate_Mode I项分离模式
  * @param I_VarSpeed_Mode I项变速模式
- * @param Output_Limit_Mode 输出限制模式
+ * @param Output_Limit_Mode 输出限幅模式
  * @param FeedForward_Mode 前馈模式
  * @return MW_Status 设置结果
+ * @note  该函数用于设置DJI2006电机中指定环路的PID控制器模式
  */
 MW_Status DJI2006::SetPIDControllerMode(DJI2006_PID_LOOP Loop,
-                                  PID_D_First_Mode D_First_Mode, 
-                                  PID_I_Limit_Mode I_Limit_Mode, 
-                                  PID_DeedZone_Mode DeedZone_Mode,
-                                  PID_I_Separate_Mode I_Separate_Mode,
-                                  PID_I_VarSpeed_Mode I_VarSpeed_Mode,
-                                  PID_Output_Limit_Mode Output_Limit_Mode,
-                                  PID_FeedForward_Mode FeedForward_Mode)
-{   
+                                PID_D_First_Mode D_First_Mode,
+                                PID_I_Limit_Mode I_Limit_Mode,
+                                PID_DeedZone_Mode DeedZone_Mode,
+                                PID_I_Separate_Mode I_Separate_Mode,
+                                PID_I_VarSpeed_Mode I_VarSpeed_Mode,
+                                PID_Output_Limit_Mode Output_Limit_Mode,
+                                PID_FeedForward_Mode FeedForward_Mode)
+{
     MW_Status res = MW_Status::ERROR;
     /* 如果发现环路枚举大于控制模式,则返回错误 */
     if( (uint8_t)Loop > (uint8_t)ControlMode)
@@ -261,44 +253,22 @@ MW_Status DJI2006::SetPIDControllerMode(DJI2006_PID_LOOP Loop,
 }
 
 /**
- * @brief 获取C610反馈消息
- * @return C610_FeedBackMsg C610反馈消息结构体
+ * @brief 获取DJI2006电机的C610反馈信息
+ * @return C610_FeedBackMsg C610反馈信息结构体(只读引用)
  * @note  该函数用于获取电调C610反馈信息
  */
-C610_FeedBackMsg DJI2006::getC610FeedBackMsg()const{
-    C610_FeedBackMsg temp;
-    /* 记录当前中断状态 */
-    uint32_t primask_bit = __get_PRIMASK();
-    __disable_irq();
-    /* 安全地拷贝 volatile 数据到临时变量 */
-    temp = const_cast<const C610_FeedBackMsg&>(this->FeedBackMsg);
-    /* 退出临界区（恢复中断）*/
-    if (!primask_bit) {
-        __enable_irq();
-    }
-    /* 返回副本，外部怎么用都安全 */
-    return temp; 
-};
+const C610_FeedBackMsg& DJI2006::getC610FeedBackMsg(){
+    return this->FeedBackMsg;
+}
 
 /**
  * @brief 获取DJI2006电机的数据参数
- * @return DJI2006_Data 电机数据参数结构体
+ * @return DJI2006_Data 电机数据参数结构体(只读引用)
  * @note  该函数用于获取电机的实时数据参数
  */
-DJI2006_Data DJI2006::getMotorData() const{
-    DJI2006_Data temp;
-    /* 记录当前中断状态 */
-    uint32_t primask_bit = __get_PRIMASK();
-    __disable_irq();
-    /* 安全地拷贝 volatile 数据到临时变量 */
-    temp = const_cast<const DJI2006_Data&>(this->MotorData);
-    /* 退出临界区（恢复中断）*/
-    if (!primask_bit) {
-        __enable_irq();
-    }
-    /* 返回副本，外部怎么用都安全 */
-    return temp; 
-};
+const DJI2006_Data& DJI2006::getMotoData(){
+    return this->MotorData;
+}
 
 /*====================== 私有成员函数 =======================*/
 
@@ -326,10 +296,6 @@ MW_Status DJI2006::SendCanMsg(int16_t current)
         DJI2006_ASSERT(MW_Status::ERROR,"Can发送失败,CAN总线资源未初始化");
         return MW_Status::ERROR;
    }
-   if(ControlTaskHandle!= nullptr){
-        DJI2006_ASSERT(MW_Status::ERROR,"检测到开启了任务,不能直接发送CAN消息");
-        return MW_Status::ERROR;
-   }
    /* 拆分电流指令为高字节和低字节 */
    uint8_t current_high = (uint8_t)(current >> 8);
    uint8_t current_low = (uint8_t)(current);
@@ -354,18 +320,18 @@ MW_Status DJI2006::SendCanMsg(int16_t current)
 }
 
 /**
- * @brief  DJI2006电机CAN初始化函数,申请CAN总线资源
+ * @brief  DJI2006电机初始化函数,申请CAN总线资源
  * @return MW_Status 初始化状态
  * @note   被Init调用,申请CAN总线资源，Init已经保证电机ID和CAN总线的有效性
  */
 MW_Status DJI2006::InitResource()
-{   
+{  
     /* 申请CAN总线资源 */
     MW_Status res = CanManagerPtr->AskResource(CanBus, BaudRate, Mode);
 
     /* 检查CAN总线资源申请结果 */
     DJI2006_ASSERT(res,"申请CAN总线资源失败,检查CAN总线配置和之前的配置是否冲突");
-    /* 如果申请成功,则启动CAN总线资源 */
+    /* 如果申请成功,则更新资源申请状态 */
     if(res == MW_Status::SUCCESS)
     {
         res = CanManagerPtr->StartResource(CanBus);
@@ -381,18 +347,17 @@ MW_Status DJI2006::InitResource()
     return res;
 }
 
-
 /**
  * @brief  向CANManager注册CAN消息回调函数
  * @return MW_Status 设置结果
  * @note   被Init调用,设置CAN消息回调函数，Init已经保证电机ID和CAN总线的有效性
  */
-MW_Status DJI2006::SetCallBack(){
+MW_Status DJI2006::SetRouterCallBack(){
     MW_Status res = MW_Status::ERROR;
     /* 检查CAN总线资源是否已初始化 */
     if(Resource_Inited == true)
     {
-        /* 订阅CAN总线,向CanManager 注册CAN消息的回调函数,用于处理DJI2006电机返回的CAN消息 */
+        /* 订阅CAN总线,向CANManger 注册CAN消息的回调函数,用于处理DJI2006电机返回的CAN消息 */
         res = CanManagerPtr->Subscribe(CanBus, MotorID,DJI2006_CanMsgCallBack);
         /* 检查CAN消息回调函数订阅结果 */
         DJI2006_ASSERT(res,"设置CAN消息回调函数失败,检查CAN总线资源是否已初始化且配置不同,或者回调数组已满");
@@ -402,7 +367,7 @@ MW_Status DJI2006::SetCallBack(){
 
 /**
  * @brief  将计算出的控制输出加入到对应的发送CAN消息的结构体中
- * @param Instance 指向DJI2006实例的指针
+ * @param Instance 指向DJI3508实例的指针
  * @param controlOut 计算出的控制输出电流值
  * @note   被ControlTask调用,注册表已经保证了电机ID的有效性
  */
@@ -430,14 +395,14 @@ void DJI2006::AddControlOutToCanMsg(DJI2006* Instance, int16_t Input_cur)
    }
 }
 
-/*======================== 静态函数 ========================*/
+/*====================== 静态成员变量和函数 ======================*/
 
 /**
- * @brief DJI2006电机的CAN消息回调函数
+ * @brief DJI3508电机的CAN消息回调函数
  * @param canId 收到的CAN消息ID
  * @param data 收到的CAN消息数据指针
  * @param len 收到的CAN消息数据长度
- * @details 根据反馈的C610消息，刷新电机数据
+ * @details 根据反馈的C620消息，刷新电机数据
  */
 void DJI2006::DJI2006_CanMsgCallBack(uint32_t canId, uint8_t* data, uint8_t len){
     /* 检查CAN消息数据是否有效 */ 
@@ -455,8 +420,7 @@ void DJI2006::DJI2006_CanMsgCallBack(uint32_t canId, uint8_t* data, uint8_t len)
         temp->FeedBackMsg.Encoder = (uint16_t)(data[0] << 8 | data[1]);
         temp->FeedBackMsg.RPM = (uint16_t)(data[2] << 8 | data[3]);
         temp->FeedBackMsg.Current = (int16_t)(data[4] << 8 | data[5]);
-        temp->FeedBackMsg.Temperature = data[6];
-        temp->FeedBackMsg.Reserved = data[7];
+        temp->FeedBackMsg.Reserved = (uint16_t)(data[6]<<8 | data[7] );
 
         /* 刷新电机数据 */
         int16_t Delta_Encoder = temp->FeedBackMsg.Encoder - temp->MotorData.Pre_Encoder;
@@ -473,7 +437,7 @@ void DJI2006::DJI2006_CanMsgCallBack(uint32_t canId, uint8_t* data, uint8_t len)
         temp->MotorData.Pre_Encoder = temp->FeedBackMsg.Encoder;
         /* 计算电机输出轴减速箱输出的速度 = 电机速度反馈值(rad/s) / 减速比 */
         temp->MotorData.Now_Speed = RPM2Rad((float)temp->FeedBackMsg.RPM)/DJI2006_CharacterParam::GearBoxRate;
-        /* 计算电机电流(毫安) = 电机电流反馈值 (-16384 - +16384)转成(-20000 - +20000毫安) */
+        /* 计算电机电流(毫安) = 电机电流反馈值 (-16384 - +16384)转成(-10000 - +10000毫安) */
         temp->MotorData.Now_Current = Int16ToFloat(temp->FeedBackMsg.Current,-16384,16384,-DJI2006_CharacterParam::Max_C610Current,DJI2006_CharacterParam::Max_C610Current);
         /* 电机输出轴当前角度 = 总的编码器计数 / 每圈编码器数 * 360° /减速比 */
         temp->MotorData.Now_Angle = (float)temp->MotorData.Total_Encoder/(float)DJI2006_CharacterParam::Encoder_Per_Round*360.0f/DJI2006_CharacterParam::GearBoxRate;    
@@ -482,7 +446,7 @@ void DJI2006::DJI2006_CanMsgCallBack(uint32_t canId, uint8_t* data, uint8_t len)
         /* 电机在线统计重置为10,表示10ms内未收到反馈,则认为电机离线 */
         temp->MotorData.Online_CountFlag = 10;
         /* 收到消息,说明电机在线,重置电机状态 */
-        temp->Status = temp->Status!=DJI2006_OverTemperature?DJI2006_Online:temp->FeedBackMsg.Temperature<=DJI2006_CharacterParam::MaxTemperature-10?DJI2006_Online:DJI2006_OverTemperature;        
+        temp->Status = DJI2006_Online;        
         /* 退出临界区 */
         __enable_irq();
     }
@@ -518,7 +482,7 @@ void DJI2006::ControlTask(void* pvParameters){
     bool Can2NeedHighID = false;
     /*电机数据快照*/
     DJI2006_Data motorDataSnapshot;
-    
+
     while(1){
         /* 刷新状态 */
         Can1NeedLowID = false;
@@ -551,21 +515,13 @@ void DJI2006::ControlTask(void* pvParameters){
                         taskEXIT_CRITICAL();
                         continue;
                     }
-                    if(Instance->FeedBackMsg.Temperature > DJI2006_CharacterParam::MaxTemperature)
-                    {
-                        /* 电机温度过高, 跳过 */
-                        Instance->Status = DJI2006_OverTemperature;
-                        AddControlOutToCanMsg(Instance, (int16_t)0x0000);
-                        taskEXIT_CRITICAL();
-                        continue;
-                    }
                     /* 电机在线, 获取数据快照用于计算 */
-                    motorDataSnapshot = const_cast<DJI2006_Data&>(Instance->MotorData);
+                    motorDataSnapshot = Instance->MotorData;
                 }
-                /* 如果电机离线或过温, 跳过处理*/
+                /* 如果电机离线, 跳过处理*/
                 else
                 {
-                    /* 电机离线/过温, 跳过 */
+                    /* 电机离线, 跳过 */
                     taskEXIT_CRITICAL();
                     continue;
                 }
@@ -642,10 +598,8 @@ void DJI2006::ControlTask(void* pvParameters){
                     break;
                 }    
                 taskEXIT_CRITICAL();
-
                 /* 将期望输出转换为输入到电机的电流 */
                 Input_cur = FloatToInt16(controlOut,-DJI2006_CharacterParam::Max_C610Current,DJI2006_CharacterParam::Max_C610Current,-16384,16384);
-                
                 AddControlOutToCanMsg(Instance,Input_cur);
             }
         }
@@ -669,4 +623,5 @@ void DJI2006::ControlTask(void* pvParameters){
         }
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
+
 }
